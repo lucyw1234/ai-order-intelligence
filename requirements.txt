@@ -1,0 +1,5 @@
+fastapi
+uvicorn
+sqlalchemy[asyncio]==2.1.6
+aiosqlite==0.21.0
+python-dotenv==1.2.4

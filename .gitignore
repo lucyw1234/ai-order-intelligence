@@ -1,0 +1,27 @@
+# Project root
+.env
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDE specific
+.vscode/
+.idea/
+
+# Database
+*.sqlite
+*.db
+
+# Logs and outputs
+logs/
+*.log
+
+# Test outputs
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Legacy models directory (safe to delete after migration)
+models.old/
