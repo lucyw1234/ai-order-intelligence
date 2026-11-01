@@ -1,23 +1,25 @@
 import pytest
 from httpx import AsyncClient, ASGITransport
 from main import app
-from database import init_db, AsyncSessionLocal
+from database import init_db
+import database
 from sqlalchemy import text
 import os
 
 os.environ["TESTING"] = "true"
 
 @pytest.fixture(autouse=True, scope="function")
-async def clear_database():
+async def clear_database(isolated_test_database):
     await init_db()
-    async with AsyncSessionLocal() as session:
+    async with database.AsyncSessionLocal() as session:
         async with session.begin():
             await session.execute(text("DELETE FROM fuel_orders"))
         await session.commit()
 
+
 @pytest.mark.anyio
 async def test_order_persistence():
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", headers={"x-api-key": "test_key"}) as client:
         # Validate an order
         response = await client.post("/validate-order", json={
             "quantity": 100.0,
@@ -38,7 +40,7 @@ async def test_order_persistence():
 
 @pytest.mark.anyio
 async def test_unique_order_ids():
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", headers={"x-api-key": "test_key"}) as client:
         # Create two orders
         response1 = await client.post("/validate-order", json={
             "quantity": 50.0,

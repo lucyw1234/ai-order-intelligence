@@ -1,11 +1,12 @@
 from pydantic import BaseModel
+from pydantic import Field
 from typing import Optional
 from datetime import datetime
 
 class OrderRequest(BaseModel):
-    quantity: float
-    unit_price: float
-    stated_total: float
+    quantity: float = Field(gt=0, allow_inf_nan=False)
+    unit_price: float = Field(gt=0, allow_inf_nan=False)
+    stated_total: float = Field(gt=0, allow_inf_nan=False)
 
 class OrderResponse(BaseModel):
     id: Optional[str] = None

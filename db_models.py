@@ -21,5 +21,5 @@ class FuelOrder(Base):
     error = Column(String, nullable=True)
     review_status = Column(String, nullable=False, default=ReviewStatus.PENDING_REVIEW)
     reviewer = Column(String, nullable=True)
-    reviewed_at = Column(DateTime, nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
     review_notes = Column(String, nullable=True)

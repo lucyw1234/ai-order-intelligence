@@ -1,69 +1,45 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import declarative_base, sessionmaker
-from sqlalchemy import text
+from sqlalchemy.engine import make_url
 import os
 
 # Determine if we're in test environment
-TESTING = os.getenv("TESTING", "false").lower() == "true"
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./orders.db")
+TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
-# Use different database for testing
-DATABASE_URL = "sqlite+aiosqlite:///./orders_test.db" if TESTING else "sqlite+aiosqlite:///./orders.db"
-
-engine = create_async_engine(
-    DATABASE_URL,
-    echo=True,
-    connect_args={"check_same_thread": False}
-)
-
-AsyncSessionLocal = sessionmaker(
-    engine,
-    class_=AsyncSession,
-    expire_on_commit=False
-)
-
+# Base declaration moved here to avoid circular imports
 Base = declarative_base()
 
+engine = None
+AsyncSessionLocal = None
+
+
+def _validate_test_database(url):
+    if os.getenv("TESTING", "").lower() == "true" or "PYTEST_CURRENT_TEST" in os.environ:
+        if url.drivername != "sqlite+aiosqlite" or url.database != ":memory:":
+            raise RuntimeError("Tests must use the dedicated in-memory SQLite database")
+
+
+def init_db_engine():
+    global engine, AsyncSessionLocal
+    database_url = make_url(DATABASE_URL)
+    _validate_test_database(database_url)
+    engine = create_async_engine(
+        database_url,
+        echo=(
+            os.getenv("APP_ENV", "").lower() == "development"
+            and os.getenv("SQL_ECHO", "").lower() == "true"
+        ),
+        connect_args={"check_same_thread": False} if "sqlite" in database_url.drivername else {}
+    )
+    AsyncSessionLocal = sessionmaker(
+        bind=engine,
+        class_=AsyncSession,
+        expire_on_commit=False
+    )
+    print(f"[DEBUG] Database engine initialized for backend: {database_url.get_backend_name()}")
+
 async def init_db():
-    async with engine.connect() as conn:
-        # Create tables if they don't exist
-        await conn.run_sync(Base.metadata.create_all)
-
-        # Check if review_status column exists
-        result = await conn.execute(text("""
-            SELECT 1 FROM pragma_table_info('fuel_orders')
-            WHERE name = 'review_status'
-        """))
-        if not result.scalar():
-            # Add review_status column
-            await conn.execute(text("""
-                ALTER TABLE fuel_orders
-                ADD COLUMN review_status TEXT NOT NULL DEFAULT 'PENDING_REVIEW'
-            """))
-
-            # Backfill review_status based on valid field
-            await conn.execute(text("""
-                UPDATE fuel_orders
-                SET review_status = 'APPROVED'
-                WHERE valid = 1
-            """))
-            await conn.execute(text("""
-                UPDATE fuel_orders
-                SET review_status = 'PENDING_REVIEW'
-                WHERE valid = 0
-            """))
-
-            # Add other review columns
-            await conn.execute(text("""
-                ALTER TABLE fuel_orders
-                ADD COLUMN reviewer TEXT
-            """))
-            await conn.execute(text("""
-                ALTER TABLE fuel_orders
-                ADD COLUMN reviewed_at DATETIME
-            """))
-            await conn.execute(text("""
-                ALTER TABLE fuel_orders
-                ADD COLUMN review_notes TEXT
-            """))
-
-        await conn.commit()
+    if engine is None:
+        init_db_engine()
+    _validate_test_database(engine.url)

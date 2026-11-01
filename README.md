@@ -1,203 +1,131 @@
 # AI Order Intelligence
 
-## Overview
+AI Order Intelligence is a FastAPI order-validation and human-review backend. It
+checks whether a submitted order's stated total matches `quantity × unit_price`,
+stores the order, and sends finite but mismatched totals to a reviewer. It does
+not extract order data from documents and does not use an AI/ML model.
 
-This project solves the business problem of validating fuel order totals before processing, ensuring financial accuracy and reducing billing errors. Orders with mismatched totals are flagged for human review, creating an audit trail of validation decisions while maintaining correct order processing for valid submissions.
+## Features
 
-The system provides:
-- Automated order validation through mathematical verification
-- Human review workflow for questionable orders
-- Complete audit trail with reviewer identity and timestamps
-- Simple API for integration with order management systems
+- Validates that quantity, unit price, and stated total are finite and positive.
+- Automatically approves matching totals and flags mismatches as
+  `PENDING_REVIEW`.
+- Provides API-key-protected order listing and a reviewer-key-protected decision
+  endpoint.
+- Records reviewer, UTC review timestamp, and optional review notes.
+- Uses SQLAlchemy async sessions, SQLite for local use, and Alembic migrations.
 
-## Technologies
+## Requirements
 
-- **Python 3.13+**: Core application language
-- **FastAPI**: REST API framework
-- **SQLAlchemy 2.1.6**: ORM with async support
-- **SQLite**: Local development database
-- **aiosqlite 0.21.0**: Async SQLite driver
-- **pytest 9.2.0**: Testing framework
-- **anyio 4.15.1**: Async test support
-- **Python-dotenv 1.2.4**: Environment configuration
+- Python 3.11 or newer
+- Git
 
-## Implemented Features
+Install the project's runtime and migration dependencies from `requirements.txt`.
+The PostgreSQL drivers support the existing async application URL and synchronous
+Alembic runner.
 
-- **Order Validation**:
-  - Validates that `quantity × unit_price = stated_total` within tolerance
-  - Automatically approves valid orders
-  - Flags invalid orders for human review
-
-- **Persistence Layer**:
-  - Stores all orders with complete validation metadata
-  - Tracks review status, reviewer identity, and timestamps
-  - Uses safe migration strategy for schema changes
-
-- **Human Review Workflow**:
-  - Three review states: `APPROVED`, `PENDING_REVIEW`, `REJECTED`
-  - Protected by reviewer API key authentication
-  - Records reviewer identity from server configuration
-  - Maintains complete audit trail with notes and timestamps
-
-- **API Endpoints**:
-  - `POST /validate-order`: Validates and persists orders
-  - `GET /orders`: Retrieves all orders
-  - `GET /orders/pending-review`: Retrieves orders needing review
-  - `PATCH /orders/{order_id}/review`: Updates review status
-
-## Architecture & Validation Flow
-
-1. Client submits order with quantity, unit price, and stated total
-2. API calculates expected total (quantity × unit price)
-3. Compares expected vs. stated total with 0.01 tolerance
-4. **Valid**: Auto-approved as `APPROVED`
-5. **Invalid**: Flagged as `PENDING_REVIEW`
-6. Reviewers can:
-   - Approve → `APPROVED`
-   - Reject → `REJECTED`
-7. All state changes recorded with reviewer identity and timestamp
-
-## API Documentation
-
-### Validate Order (POST /validate-order)
-
-**Request**:
-```json
-{
-  "quantity": 100.0,
-  "unit_price": 2.5,
-  "stated_total": 250.0
-}
-```
-
-**Successful Response**:
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "valid": true,
-  "calculated_total": 250.0,
-  "error": null
-}
-```
-
-### Get All Orders (GET /orders)
-
-**Response**:
-```json
-[{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "quantity": 100.0,
-  "unit_price": 2.5,
-  "stated_total": 250.0,
-  "calculated_total": 250.0,
-  "valid": true,
-  "error": null,
-  "review_status": "APPROVED",
-  "reviewer": "Reviewer",
-  "reviewed_at": "2026-10-30T16:28:02Z",
-  "review_notes": null
-}]
-```
-
-### Get Pending Review Orders (GET /orders/pending-review)
-
-Returns only orders with `PENDING_REVIEW` status
-
-### Review Order (PATCH /orders/{id}/review)
-
-**Request**:
-```json
-{
-  "decision": "APPROVE",
-  "notes": "Valid after manual check"
-}
-```
-
-**Headers**:
-```
-x-reviewer-key: reviewer_secret_key
-```
-
-**Validation Rules**:
-- Only `APPROVE` or `REJECT` decisions allowed
-- Only `PENDING_REVIEW` orders can be reviewed
-- Requires valid reviewer API key
-
-## Local Setup Instructions
-
-### Windows (PowerShell)
+## Local setup (Windows PowerShell)
 
 ```powershell
-# Create virtual environment
 python -m venv .venv
-.venv\Scripts\Activate.ps1
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure environment
-Copy .env.example .env
-# Edit .env with your values
-
-# Run application
-uvicorn main:app --reload --port 8000
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env
 ```
 
-### Mac/Linux (Bash)
+Edit `.env` and replace the example values with unique local API keys and a
+reviewer name. Never commit `.env` or use example keys outside local development.
+The default database is the local `orders.db` SQLite file.
 
-```bash
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate
+For a **new, empty local database**, create its schema with the checked-in
+migrations:
 
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure environment
-cp .env.example .env
-# Edit .env with your values
-
-# Run application
-uvicorn main:app --reload --port 8000
+```powershell
+alembic upgrade head
 ```
 
-## Environment Configuration
+Do not run this against a database containing records or a shared/production
+database without first reviewing the target and obtaining approval. Application
+startup initializes the engine and sessions only; it does not create, alter, or
+migrate tables.
 
-**.env.example**:
-```ini
-# Reviewer API key for local development
-REVIEWER_API_KEY=your_reviewer_key_here
+Start the API:
 
-# Reviewer name (must match your identity)
-REVIEWER_NAME=your_name_here
+```powershell
+uvicorn main:app --env-file .env --reload --port 8000
 ```
 
-> **Note**: Never commit actual credentials. Add `.env` to your `.gitignore`.
+Interactive API documentation is available at `http://127.0.0.1:8000/docs`.
 
-## Running Tests
+## API demonstration
 
-```bash
-pytest -v
+All order endpoints require `x-api-key`. A valid request is automatically
+approved:
+
+```powershell
+curl.exe -X POST http://127.0.0.1:8000/validate-order `
+  -H "x-api-key: <APP_API_KEY>" `
+  -H "Content-Type: application/json" `
+  -d "{\"quantity\": 2, \"unit_price\": 10, \"stated_total\": 20}"
 ```
 
-**Test Results**:
+A positive, finite but mismatched total is saved for review rather than rejected:
+
+```powershell
+curl.exe -X POST http://127.0.0.1:8000/validate-order `
+  -H "x-api-key: <APP_API_KEY>" `
+  -H "Content-Type: application/json" `
+  -d "{\"quantity\": 2, \"unit_price\": 10, \"stated_total\": 19}"
 ```
-13 passed, 0 failed, 0 skipped, 0 warnings in 4.57s
+
+List orders awaiting review with `GET /orders/pending-review`. To review an order,
+use its returned ID:
+
+```powershell
+curl.exe -X PATCH http://127.0.0.1:8000/orders/<ORDER_ID>/review `
+  -H "x-api-key: <APP_API_KEY>" `
+  -H "x-reviewer-key: <REVIEWER_API_KEY>" `
+  -H "Content-Type: application/json" `
+  -d "{\"decision\": \"APPROVE\", \"notes\": \"Verified manually\"}"
 ```
 
-## Current Limitations
+The server requires `APP_API_KEY`, `REVIEWER_API_KEY`, and `REVIEWER_NAME`.
+Missing key configuration fails closed. For local troubleshooting only, SQL
+statement logging can be enabled by setting both `APP_ENV=development` and
+`SQL_ECHO=true`; SQL logs may include submitted order values, so leave it off by
+default.
 
-- **SQLite Database**: Suitable only for development (not production-scale)
-- **No Production Authentication**: API key protection is basic (should integrate with proper auth system)
-- **Local Development Focus**: No deployment configuration
-- **No SSL/TLS**: HTTP only for local use
-- **No Pagination**: `/orders` endpoint returns all records
+## Tests
 
-## Future Improvements
+Activate the virtual environment and run:
 
-- **AI-Powered PDF Order Extraction**: (Not implemented) Automatically extract order data from PDF invoices
-- **Production Authentication**: Integrate with OAuth2 or corporate identity provider
-- **Database Scaling**: Migrate to PostgreSQL for production
-- **Review Dashboard**: Web interface for review workflow
-- **Pagination & Filtering**: For large order volumes
-- **Webhook Notifications**: Alert systems when orders require review
+```powershell
+python -m pytest -v
+```
+
+The test configuration forces `TESTING=true` and an in-memory SQLite URL. A
+database guard rejects file-backed SQLite and PostgreSQL URLs during tests.
+Tables are created and dropped only in that disposable test database; tests do
+not use the local application database.
+
+## API endpoints
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/validate-order` | Validate and persist an order |
+| `GET` | `/orders` | List orders |
+| `GET` | `/orders/pending-review` | List orders requiring human review |
+| `PATCH` | `/orders/{order_id}/review` | Approve or reject a pending order |
+
+`POST /validate-order` returns HTTP 422 for zero, negative, or non-finite numeric
+inputs. A finite, positive but incorrect stated total is persisted with
+`PENDING_REVIEW`. Matching totals are automatically marked `APPROVED`.
+
+## Current scope and limitations
+
+This project demonstrates deterministic order-total validation and an
+authenticated human-review workflow. PDF/image extraction, AI document
+understanding, a web review dashboard, pagination, and production-grade
+user/role authentication are not implemented. The API keys are a simple
+portfolio/demo authentication mechanism, not a substitute for an identity
+provider in production.
