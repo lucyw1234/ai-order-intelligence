@@ -2,8 +2,7 @@
 
 AI Order Intelligence is a FastAPI order-validation and human-review backend. It
 checks whether a submitted order's stated total matches `quantity × unit_price`,
-stores the order, and sends finite but mismatched totals to a reviewer. It does
-not extract order data from documents and does not use an AI/ML model.
+stores the order, and sends finite but mismatched totals to a reviewer.
 
 ## Features
 
